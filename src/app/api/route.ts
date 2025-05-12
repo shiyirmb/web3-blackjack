@@ -192,11 +192,11 @@ export async function POST(request: Request) {
     gameState.cards = remainingCards
     const playerCardsTotal = calculateCardsTotal(gameState.playerHand)
     if (playerCardsTotal > 21) {
+      await writeScore(PLAYER_ADDRESS, -100);
       gameState.message = "Player lose, Bust"
-      gameState.score -= 100
     } else if (playerCardsTotal === 21) {
+      await writeScore(PLAYER_ADDRESS, 100);
       gameState.message = "Player win, Black jack"
-      gameState.score += 100
     }
   } else if (action === 'stand') {
     console.log('进入停牌逻辑')
