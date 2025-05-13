@@ -5,6 +5,8 @@ import {
     GetCommand,
     UpdateCommand
 } from "@aws-sdk/lib-dynamodb";
+import { verifyMessage } from "viem";
+import jwt from 'jsonwebtoken'
 
 // 创建 DynamoDB 客户端
 const client = new DynamoDBClient({
@@ -75,9 +77,6 @@ const gameState: {
   score: 0,
 }
 
-// 玩家地址
-const PLAYER_ADDRESS = 'player'
-
 // 叫牌抽卡的公用方法
 function getRandomCards(cards: Card[], count: number) {
   const randomIndexSet = new Set<number>()
@@ -111,10 +110,10 @@ function calculateCardsTotal(cards: Card[]) {
   return total
 }
 // 发送给前端数据的公用方法
-async function sendSuccessDataToFront() {
+async function sendSuccessDataToFront(address: string) {
   try {
     // 读取分数
-    const score = await readScore(PLAYER_ADDRESS)
+    const score = await readScore(address)
     return new Response(JSON.stringify(
       {
         playerHand: gameState.playerHand,
@@ -137,7 +136,13 @@ function sendErrorDataToFront(message: string, status: number) {
 }
 
 // 初始化获取卡牌
-export async function GET() {
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const address = url.searchParams.get('address')
+  if (!address) {
+    return sendErrorDataToFront('Address is required', 500)
+  }
+
   // 重置游戏状态
   gameState.playerHand = []
   gameState.dealerHand = []
@@ -155,7 +160,7 @@ export async function GET() {
 
   try {
     // 读取分数
-    const score = await readScore(PLAYER_ADDRESS)
+    const score = await readScore(address)
     console.log("当前分数:", score)
     // 特殊处理，初始化获取的两张牌，可能为21点
     const playerCardsTotal = calculateCardsTotal(gameState.playerHand)
@@ -163,22 +168,45 @@ export async function GET() {
     if (playerCardsTotal === 21 && dealerCardsTotal === 21) {
       gameState.message = 'draw'
     } else if (playerCardsTotal === 21) {
-      await writeScore(PLAYER_ADDRESS, 100);
+      await writeScore(address, 100);
       gameState.message = "Player win, Black jack"
     } else if (dealerCardsTotal === 21) {
-      await writeScore(PLAYER_ADDRESS, -100);
+      await writeScore(address, -100);
       gameState.message = "Player lose, Dealer black jack"
     }
-    return sendSuccessDataToFront()
+    return sendSuccessDataToFront(address)
   } catch (error) {
     console.error("读取分数出错:", error)
     return sendErrorDataToFront('read score error.', 500)
   }
 }
 
-// 叫牌/停牌
+// 叫牌/停牌/签名校验
 export async function POST(request: Request) {
-  const { action } = await request.json()
+  const { action, address, message, signature } = await request.json()
+  if (action === 'auth') {
+    console.log('进入签名校验逻辑')
+    const isValid = await verifyMessage({ address, message, signature })
+    if (!isValid) {
+      return sendErrorDataToFront('Invalid signature', 400)
+    } else {
+      const token = jwt.sign({ address }, process.env.JWT_SECRET || '', { expiresIn: "1h" })
+      return new Response(JSON.stringify({
+        message: 'Valid signature',
+        jsonwebtoken: token,
+      }), { status: 200 })
+    }
+  }
+
+  const token = request.headers.get('bearer')?.split(' ')[1]
+  if (!token) {
+    return sendErrorDataToFront('Token is required', 401)
+  }
+  const decode = jwt.verify(token, process.env.JWT_SECRET || '') as { address: string }
+  if (decode.address.toLocaleLowerCase() !== address.toLocaleLowerCase()) {
+    return sendErrorDataToFront('Invalid token', 401)
+  }
+
   if (action === 'hit') {
     console.log('进入叫牌逻辑')
     // 玩家操作逻辑：
@@ -192,13 +220,15 @@ export async function POST(request: Request) {
     gameState.cards = remainingCards
     const playerCardsTotal = calculateCardsTotal(gameState.playerHand)
     if (playerCardsTotal > 21) {
-      await writeScore(PLAYER_ADDRESS, -100);
+      await writeScore(address, -100);
       gameState.message = "Player lose, Bust"
     } else if (playerCardsTotal === 21) {
-      await writeScore(PLAYER_ADDRESS, 100);
+      await writeScore(address, 100);
       gameState.message = "Player win, Black jack"
     }
-  } else if (action === 'stand') {
+    return sendSuccessDataToFront(address)
+  }
+  if (action === 'stand') {
     console.log('进入停牌逻辑')
     // 庄家操作逻辑：
     // 1、玩家点击停牌时，随机获取一张卡牌到庄家手牌中
@@ -216,25 +246,24 @@ export async function POST(request: Request) {
     }
     const dealerCardsTotal = calculateCardsTotal(gameState.dealerHand)
     if (dealerCardsTotal > 21) {
-      await writeScore(PLAYER_ADDRESS, 100)
+      await writeScore(address, 100)
       gameState.message = "Player win, Dealer bust"
     } else if (dealerCardsTotal === 21) {
-      await writeScore(PLAYER_ADDRESS, -100)
+      await writeScore(address, -100)
       gameState.message = "Player lose, Dealer black jack"
     } else {
       const playerCardsTotal = calculateCardsTotal(gameState.playerHand)
       if (dealerCardsTotal > playerCardsTotal) {
-        await writeScore(PLAYER_ADDRESS, -100)
+        await writeScore(address, -100)
         gameState.message = "Player lose"
       } else if (dealerCardsTotal < playerCardsTotal) {
-        await writeScore(PLAYER_ADDRESS, 100)
+        await writeScore(address, 100)
         gameState.message = "Player win"
       } else {
         gameState.message = "draw"
       }
     }
-  } else {
-    return sendErrorDataToFront('Invalid action.', 400)
+    return sendSuccessDataToFront(address)
   }
-  return sendSuccessDataToFront()
+  return sendErrorDataToFront('Invalid action.', 400)
 }
