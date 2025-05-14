@@ -43,7 +43,7 @@ export function Providers(props: {
     appName: 'BlackJack',
     projectId: '20250501',
     chains: [sepolia, AssetHub],
-  })
+  }) as any
   const [queryClient] = useState(() => new QueryClient())
 
   return (

@@ -27,6 +27,10 @@ export default function App() {
       },
       body: JSON.stringify({ action: 'hit', address }),
     })
+    if (response.status === 401) {
+      setIsSigned(false)
+      return
+    }
     if (response.status != 200) return
     const { playerHand, message, score } = await response.json()
     console.log('叫牌===>', playerHand)
@@ -43,6 +47,10 @@ export default function App() {
       },
       body: JSON.stringify({ action: 'stand', address }),
     })
+    if (response.status === 401) {
+      setIsSigned(false)
+      return
+    }
     if (response.status != 200) return
     const { dealerHand, message, score } = await response.json()
     console.log('停牌===>', dealerHand)
