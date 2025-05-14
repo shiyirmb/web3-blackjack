@@ -12,6 +12,12 @@ export default function App() {
   const [isSigned, setIsSigned] = useState(false)
   const { signMessageAsync } = useSignMessage()
 
+  useEffect(() => {
+    if (isConnected && sessionStorage.getItem('jwt')) {
+      initGame()
+    }
+  })
+
   // 点击叫牌按钮
   async function handleHit() {
     const response = await fetch('/api', {
@@ -46,7 +52,7 @@ export default function App() {
   }
   // 点击重置按钮
   async function initGame() {
-    const response = await fetch(`/api?address${address}`, { method: 'GET' })
+    const response = await fetch(`/api?address=${address}`, { method: 'GET' })
     if (response.status != 200) return
     const { playerHand, dealerHand, message, score } = await response.json()
     setPlayerHand(playerHand)
@@ -58,12 +64,12 @@ export default function App() {
   async function handleSign() {
     const message = `Welcome to the game black jack at ${new Date().toString()}`
     // 获取签名
-    const signautre = await signMessageAsync({ message })
+    const signature = await signMessageAsync({ message })
     const params = {
       action: 'auth',
       address,
       message,
-      signautre,
+      signature,
     }
     // 调用后端接口校验签名
     const response = await fetch('/api', {
