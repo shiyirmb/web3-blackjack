@@ -8,7 +8,7 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [playerHand, setPlayerHand] = useState<{ rank: string, suit: string }[]>([])
   const [dealerHand, setDealerHand] = useState<{ rank: string, suit: string }[]>([])
-  const { address, isConnected } = useAccount()
+  const { address, isConnected, chainId } = useAccount()
   const [isSigned, setIsSigned] = useState(false)
   const { signMessageAsync } = useSignMessage()
 
@@ -20,12 +20,13 @@ export default function App() {
 
   // 点击叫牌按钮
   async function handleHit() {
+    const addressID = `${chainId}-${address}`
     const response = await fetch('/api', {
       method: 'POST',
       headers: {
         bearer: `Bearer ${sessionStorage.getItem('jwt') || ''}`
       },
-      body: JSON.stringify({ action: 'hit', address }),
+      body: JSON.stringify({ action: 'hit', address: addressID }),
     })
     if (response.status === 401) {
       setIsSigned(false)
@@ -40,12 +41,13 @@ export default function App() {
   }
   // 点击停牌按钮
   async function handleStand() {
+    const addressID = `${chainId}-${address}`
     const response = await fetch('/api', {
       method: 'POST',
       headers: {
         bearer: `Bearer ${sessionStorage.getItem('jwt') || ''}`
       },
-      body: JSON.stringify({ action: 'stand', address }),
+      body: JSON.stringify({ action: 'stand', address: addressID }),
     })
     if (response.status === 401) {
       setIsSigned(false)
@@ -60,7 +62,7 @@ export default function App() {
   }
   // 点击重置按钮
   async function initGame() {
-    const response = await fetch(`/api?address=${address}`, { method: 'GET' })
+    const response = await fetch(`/api?address=${chainId}-${address}`, { method: 'GET' })
     if (response.status != 200) return
     const { playerHand, dealerHand, message, score } = await response.json()
     setPlayerHand(playerHand)
@@ -73,9 +75,10 @@ export default function App() {
     const message = `Welcome to the game black jack at ${new Date().toString()}`
     // 获取签名
     const signature = await signMessageAsync({ message })
+    const addressID = `${chainId}-${address}`
     const params = {
       action: 'auth',
-      address,
+      address: addressID,
       message,
       signature,
     }
@@ -95,7 +98,15 @@ export default function App() {
   if (!isSigned) {
     return <div className="flex flex-col gap-2 items-center justify-center h-screen bg-gray-300">
       <ConnectButton/>
-      <button onClick={handleSign} className="border-black bg-amber-300 p-2 rounded">Sign with your wallet</button>
+      { 
+        isConnected ? 
+        <button 
+          onClick={handleSign} 
+          className="border-black bg-amber-300 p-2 rounded"
+        >Sign with your wallet</button> :
+        ''
+      }
+      
     </div>
   } else {
     return (
