@@ -139,6 +139,7 @@ function sendErrorDataToFront(message: string, status: number) {
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const address = url.searchParams.get('address')
+  console.log(`玩家${address}获取卡牌`);
   if (!address) {
     return sendErrorDataToFront('Address is required', 500)
   }
@@ -168,11 +169,13 @@ export async function GET(request: Request) {
     if (playerCardsTotal === 21 && dealerCardsTotal === 21) {
       gameState.message = 'draw'
     } else if (playerCardsTotal === 21) {
-      await writeScore(address, 100);
       gameState.message = "Player win, Black jack"
+      console.log(gameState.message)
+      await writeScore(address, 100);
     } else if (dealerCardsTotal === 21) {
-      await writeScore(address, -100);
       gameState.message = "Player lose, Dealer black jack"
+      console.log(gameState.message)
+      await writeScore(address, -100)
     }
     return sendSuccessDataToFront(address)
   } catch (error) {
@@ -187,6 +190,7 @@ export async function POST(request: Request) {
   if (action === 'auth') {
     console.log('进入签名校验逻辑')
     const isValid = await verifyMessage({ address, message, signature })
+    console.log('签名校验是否通过', isValid)
     if (!isValid) {
       return sendErrorDataToFront('Invalid signature', 400)
     } else {
@@ -203,6 +207,7 @@ export async function POST(request: Request) {
     return sendErrorDataToFront('Token is required', 401)
   }
   const decode = jwt.verify(token, process.env.JWT_SECRET || '') as { address: string }
+  console.log('校验玩家身份', decode);
   if (decode.address.toLocaleLowerCase() !== address.toLocaleLowerCase()) {
     return sendErrorDataToFront('Invalid token', 401)
   }
@@ -220,11 +225,13 @@ export async function POST(request: Request) {
     gameState.cards = remainingCards
     const playerCardsTotal = calculateCardsTotal(gameState.playerHand)
     if (playerCardsTotal > 21) {
-      await writeScore(address, -100);
       gameState.message = "Player lose, Bust"
+      console.log(gameState.message)
+      await writeScore(address, -100)
     } else if (playerCardsTotal === 21) {
-      await writeScore(address, 100);
       gameState.message = "Player win, Black jack"
+      console.log(gameState.message)
+      await writeScore(address, 100)
     }
     return sendSuccessDataToFront(address)
   }
@@ -246,21 +253,26 @@ export async function POST(request: Request) {
     }
     const dealerCardsTotal = calculateCardsTotal(gameState.dealerHand)
     if (dealerCardsTotal > 21) {
-      await writeScore(address, 100)
       gameState.message = "Player win, Dealer bust"
+      console.log(gameState.message)
+      await writeScore(address, 100)
     } else if (dealerCardsTotal === 21) {
-      await writeScore(address, -100)
       gameState.message = "Player lose, Dealer black jack"
+      console.log(gameState.message)
+      await writeScore(address, -100)
     } else {
       const playerCardsTotal = calculateCardsTotal(gameState.playerHand)
       if (dealerCardsTotal > playerCardsTotal) {
-        await writeScore(address, -100)
         gameState.message = "Player lose"
+        console.log(gameState.message)
+        await writeScore(address, -100)
       } else if (dealerCardsTotal < playerCardsTotal) {
-        await writeScore(address, 100)
         gameState.message = "Player win"
+        console.log(gameState.message)
+        await writeScore(address, 100)
       } else {
         gameState.message = "draw"
+        console.log(gameState.message)
       }
     }
     return sendSuccessDataToFront(address)

@@ -1,35 +1,40 @@
 'use client'
 import { useEffect, useState } from "react";
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useSignMessage } from "wagmi";
+import { useAccount, useSignMessage, useAccountEffect } from "wagmi";
 
 export default function App() {
   const [score, setScore] = useState(0)
   const [message, setMessage] = useState('')
   const [playerHand, setPlayerHand] = useState<{ rank: string, suit: string }[]>([])
   const [dealerHand, setDealerHand] = useState<{ rank: string, suit: string }[]>([])
-  const { address, isConnected, chainId } = useAccount()
+  const { address, isConnected } = useAccount()
   const [isSigned, setIsSigned] = useState(false)
   const { signMessageAsync } = useSignMessage()
 
-  useEffect(() => {
-    if (isConnected && sessionStorage.getItem('jwt')) {
-      initGame()
-    }
+  useAccountEffect({
+    onConnect(data) {
+      console.log('连接成功', isConnected, isSigned)
+    },
+    onDisconnect() {
+      console.log('断开连接!', isConnected, isSigned)
+      setIsSigned(false)
+      sessionStorage.setItem('jwt', '')
+    },
   })
 
   // 点击叫牌按钮
   async function handleHit() {
-    const addressID = `${chainId}-${address}`
     const response = await fetch('/api', {
       method: 'POST',
       headers: {
         bearer: `Bearer ${sessionStorage.getItem('jwt') || ''}`
       },
-      body: JSON.stringify({ action: 'hit', address: addressID }),
+      body: JSON.stringify({ action: 'hit', address }),
     })
     if (response.status === 401) {
       setIsSigned(false)
+      sessionStorage.setItem('jwt', '')
       return
     }
     if (response.status != 200) return
@@ -41,16 +46,16 @@ export default function App() {
   }
   // 点击停牌按钮
   async function handleStand() {
-    const addressID = `${chainId}-${address}`
     const response = await fetch('/api', {
       method: 'POST',
       headers: {
         bearer: `Bearer ${sessionStorage.getItem('jwt') || ''}`
       },
-      body: JSON.stringify({ action: 'stand', address: addressID }),
+      body: JSON.stringify({ action: 'stand', address }),
     })
     if (response.status === 401) {
       setIsSigned(false)
+      sessionStorage.setItem('jwt', '')
       return
     }
     if (response.status != 200) return
@@ -62,7 +67,7 @@ export default function App() {
   }
   // 点击重置按钮
   async function initGame() {
-    const response = await fetch(`/api?address=${chainId}-${address}`, { method: 'GET' })
+    const response = await fetch(`/api?address=${address}`, { method: 'GET' })
     if (response.status != 200) return
     const { playerHand, dealerHand, message, score } = await response.json()
     setPlayerHand(playerHand)
@@ -75,10 +80,9 @@ export default function App() {
     const message = `Welcome to the game black jack at ${new Date().toString()}`
     // 获取签名
     const signature = await signMessageAsync({ message })
-    const addressID = `${chainId}-${address}`
     const params = {
       action: 'auth',
-      address: addressID,
+      address,
       message,
       signature,
     }
