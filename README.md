@@ -21,5 +21,6 @@
 
 ## 项目启动
 - git clone https://github.com/shiyirmb/web3-blackjack.git
+- cd web3-blackjack
 - pnpm install
 - pnpm run dev
