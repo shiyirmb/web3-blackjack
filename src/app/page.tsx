@@ -1,7 +1,9 @@
 'use client'
 import { useEffect, useState } from "react";
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useSignMessage, useAccountEffect } from "wagmi";
+import { useAccount, useSignMessage, useAccountEffect, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
+import { BLACKJACK_NFT_ADDRESS, BLACKJACK_NFT_ABI } from '../config/contracts';
+import { NFTDisplay } from '../components/NFTDisplay';
 
 export default function App() {
   const [score, setScore] = useState(0)
@@ -11,6 +13,21 @@ export default function App() {
   const { address, isConnected } = useAccount()
   const [isSigned, setIsSigned] = useState(false)
   const { signMessageAsync } = useSignMessage()
+  const [isMinting, setIsMinting] = useState(false)
+  const [mintHash, setMintHash] = useState<`0x${string}` | undefined>()
+  const [mintedTokenId, setMintedTokenId] = useState<number | null>(null)
+
+  const { writeContract, data: writeData, isPending, isSuccess, error: writeError } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: writeData,
+  });
+
+  const { data: currentTokenId } = useReadContract({
+    abi: BLACKJACK_NFT_ABI,
+    address: BLACKJACK_NFT_ADDRESS,
+    functionName: 'currentTokenId',
+  });
 
   useAccountEffect({
     onConnect(data) {
@@ -22,6 +39,17 @@ export default function App() {
       sessionStorage.setItem('jwt', '')
     },
   })
+  
+  useEffect(() => {
+    if (isConfirmed && writeData) {
+      setIsMinting(false);
+      setMintHash(writeData);
+      setMessage('恭喜获得NFT！');
+      if (currentTokenId) {
+        setMintedTokenId(Number(currentTokenId));
+      }
+    }
+  }, [isConfirmed, writeData, currentTokenId]);
 
   // 点击叫牌按钮
   async function handleHit() {
@@ -98,6 +126,26 @@ export default function App() {
       initGame()
     }
   }
+  // 获取NFT
+  async function getNFT() {
+    if (!address) {
+      setMessage('请先连接钱包');
+      return;
+    }
+    try {
+      setIsMinting(true);
+      await writeContract({
+        abi: BLACKJACK_NFT_ABI,
+        address: BLACKJACK_NFT_ADDRESS,
+        functionName: 'mint',
+        args: [address],
+      });
+    } catch (error) {
+      console.error('Mint error:', error);
+      setMessage('铸造NFT失败，请重试');
+      setIsMinting(false);
+    }
+  }
 
   if (!isSigned) {
     return <div className="flex flex-col gap-2 items-center justify-center h-screen bg-gray-300">
@@ -110,7 +158,6 @@ export default function App() {
         >Sign with your wallet</button> :
         ''
       }
-      
     </div>
   } else {
     return (
@@ -120,7 +167,42 @@ export default function App() {
         <h2 
           className={`text-2xl blod ${message.includes('win') ? 'bg-green-300' : 'bg-blue-300'}`}
         >Score: {score} { message }</h2>
-  
+        {
+          score > 1000 ? 
+          <div className="flex flex-col items-center gap-2">
+            <button 
+              className={`rounded-md p-2 px-4 transition-all duration-200 ${
+                isMinting || isConfirming 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+              }`}
+              onClick={getNFT}
+              disabled={isMinting || isConfirming}
+            >
+              {isMinting || isConfirming ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  {isMinting ? '提交交易中...' : '等待确认...'}
+                </div>
+              ) : (
+                '获取NFT'
+              )}
+            </button>
+            {mintHash && (
+              <a 
+                href={`https://sepolia.etherscan.io/tx/${mintHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-500 hover:text-blue-600"
+              >
+                在区块浏览器中查看
+              </a>
+            )}
+          </div>
+          : ''
+        }
+        {mintedTokenId && <NFTDisplay tokenId={mintedTokenId} />}
+
         <div className="mt-4">
           <h2>Dealer's hand</h2>
           <div className="flex flex-row gap-2">
@@ -135,7 +217,7 @@ export default function App() {
             }
           </div>
         </div>
-  
+
         <div className="mt-4">
           <h2>Player's hand</h2>
           <div className="flex flex-row gap-2">
@@ -150,7 +232,7 @@ export default function App() {
             }
           </div>
         </div>
-  
+
         <div className="flex flex-row gap-2 mt-4">
           { 
             message === '' ?
